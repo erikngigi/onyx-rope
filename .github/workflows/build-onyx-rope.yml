@@ -104,11 +104,19 @@ jobs:
 
           flutter build apk --debug
       # ─── 8a. Load SSH deploy key ───────────────────────────────────────────
+      # Only runs when publishing is enabled. The private key must be stored
+      # in the NIGHTLY_DEPLOY_KEY secret as raw PEM text (not base64 encoded).
+      # The matching public key must be added as a write-access deploy key on
+      # the onyx-rope-nightly repository.
       - name: Load SSH deploy key
+        if: github.event_name == 'push' || inputs.publish_nightly == 'true'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.NIGHTLY_DEPLOY_KEY }}
       # ─── 8b. Publish to F-Droid nightly repo ──────────────────────────────
+      # Requires two secrets:
+      #   NIGHTLY_DEPLOY_KEY : raw PEM private SSH key (write access to nightly repo)
+      #   DEBUG_KEYSTORE     : debug.keystore file encoded as base64
       - name: Publish to F-Droid nightly repo
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
         env:
@@ -128,11 +136,17 @@ jobs:
           sudo apt-get install -y apksigner --no-install-recommends
           pip install fdroidserver
 
-          # Decode keystore from base64 secret to a real file
+          # Ensure the fdroid working directory exists
+          mkdir -p fdroid
+
+          # Decode the keystore from base64 secret into a real file
           echo "$DEBUG_KEYSTORE" | base64 --decode > fdroid/debug.keystore
 
-          # Write the config.yml fdroid actually reads
-          cat > fdroid/config.yml << EOF
+          # Write config.yml that fdroid actually reads.
+          # IMPORTANT: the heredoc content must be flush-left (no leading
+          # spaces) so the resulting YAML is valid — indentation inside a
+          # run: block would otherwise be prepended to every line.
+          cat > fdroid/config.yml << 'EOF'
           repo_url: https://github.com/erikngigi/onyx-rope-nightly/raw/master/fdroid/repo
           repo_name: "Onyx Rope Nightly"
           repo_description: "Nightly builds of Onyx Rope"
