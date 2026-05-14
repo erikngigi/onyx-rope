@@ -113,6 +113,13 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.NIGHTLY_DEPLOY_KEY }}
+      - name: Add GitHub to known hosts
+        if: github.event_name == 'push' || inputs.publish_nightly == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
       # ─── 8b. Publish to F-Droid nightly repo ──────────────────────────────
       # Requires two secrets:
       #   NIGHTLY_DEPLOY_KEY : raw PEM private SSH key (write access to nightly repo)
