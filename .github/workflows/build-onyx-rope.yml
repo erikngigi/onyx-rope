@@ -123,9 +123,9 @@ jobs:
           echo "  Archive limit : ${{ env.ARCHIVE_LIMIT }} builds"
           echo "============================================"
 
-          sudo add-apt-repository ppa:fdroid/fdroidserver --yes
           sudo apt-get update -qq
-          sudo apt-get install -y apksigner fdroidserver --no-install-recommends
+          sudo apt-get install -y apksigner --no-install-recommends
+          pip install fdroidserver
 
           fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
       # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
