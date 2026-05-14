@@ -107,17 +107,21 @@ jobs:
       - name: Publish to F-Droid nightly repo
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
         env:
-          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE }}
         run: |
-          echo "============================================"
-          echo "  Publishing to F-Droid nightly repo..."
-          echo "  Archive limit : ${{ env.ARCHIVE_LIMIT }} builds"
-          echo "============================================"
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "ERROR: DEBUG_KEYSTORE secret is missing!"
+            exit 1
+          fi
+
+          # Decode the keystore
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > debug.keystore
 
           sudo add-apt-repository ppa:fdroid/fdroidserver --yes
           sudo apt-get update -qq
           sudo apt-get install -y apksigner fdroidserver --no-install-recommends
 
+          # Point fdroid to the decoded keystore if necessary
           fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
       # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
       - name: Upload APK artifact
