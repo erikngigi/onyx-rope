@@ -7,7 +7,7 @@ on:
       - 'android/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
-      - '.github/workflows/nightly.yml'
+      - '.github/workflows/build-onyx-rope.yml'
   workflow_dispatch:
     inputs:
       flutter_channel:
