@@ -84,7 +84,7 @@ jobs:
       # ─── 8. SCP APK to VPS ─────────────────────────────────────────────────
       - name: Copy APK to VPS
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
