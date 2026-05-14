@@ -1,0 +1,142 @@
+name: Flutter Build & F-Droid Nightly
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/nightly.yml'
+  workflow_dispatch:
+    inputs:
+      flutter_channel:
+        description: 'Flutter channel to build with'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - 'stable'
+          - 'beta'
+          - 'master'
+      publish_nightly:
+        description: 'Publish build to F-Droid nightly repo'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      archive_limit:
+        description: 'Number of nightly builds to keep in the F-Droid repo'
+        required: true
+        default: '10'
+        type: string
+# ─── Environment variables ─────────────────────────────────────────────────────
+# These are available to every step in every job in this workflow.
+# workflow_dispatch inputs fall back to the defaults below when the workflow
+# is triggered by a push (where no inputs are supplied).
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+  FLUTTER_VERSION: '3.41.9'
+  FLUTTER_CHANNEL: ${{ inputs.flutter_channel || 'stable' }}
+  ARCHIVE_LIMIT: ${{ inputs.archive_limit || '10' }}
+jobs:
+  build-and-publish:
+    name: Build APK & Publish Nightly
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # ─── 1. Checkout ───────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4.2.2
+      # ─── 2. Echo trigger information ───────────────────────────────────────
+      - name: Echo trigger information
+        run: |
+          echo "============================================"
+          echo "  Flutter Build & F-Droid Nightly"
+          echo "============================================"
+          echo "Triggered by    : ${{ github.event_name }}"
+          echo "Branch          : ${{ github.ref_name }}"
+          echo "Commit SHA      : ${{ github.sha }}"
+          echo "Actor           : ${{ github.actor }}"
+          echo "Java version    : ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }})"
+          echo "Flutter version : ${{ env.FLUTTER_VERSION }} (${{ env.FLUTTER_CHANNEL }})"
+          echo "Archive limit   : ${{ env.ARCHIVE_LIMIT }} builds"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Publish nightly : ${{ inputs.publish_nightly }}"
+          fi
+          echo "============================================"
+      # ─── 3. Set up Java ────────────────────────────────────────────────────
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4.7.1
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+      # ─── 4. Set up Flutter ─────────────────────────────────────────────────
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2.18.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      # ─── 5. Install dependencies ───────────────────────────────────────────
+      - name: Install dependencies
+        run: flutter pub get
+      # ─── 6. Run tests ──────────────────────────────────────────────────────
+      - name: Run tests
+        run: flutter test
+      # ─── 7. Build debug APK ────────────────────────────────────────────────
+      - name: Build debug APK
+        run: |
+          export VERSION_CODE=$(date '+%s')
+          echo "============================================"
+          echo "  Starting Flutter build..."
+          echo "  versionCode : $VERSION_CODE"
+          echo "  Channel     : ${{ env.FLUTTER_CHANNEL }}"
+          echo "  Flutter     : ${{ env.FLUTTER_VERSION }}"
+          echo "  Java        : ${{ env.JAVA_VERSION }}"
+          echo "============================================"
+
+          sed -i "s/versionCode[[:space:]]*=\?[[:space:]]*[0-9]*/versionCode $VERSION_CODE/" \
+            android/app/build.gradle
+
+          flutter build apk --debug
+      # ─── 8. Publish to F-Droid nightly repo ────────────────────────────────
+      - name: Publish to F-Droid nightly repo
+        if: github.event_name == 'push' || inputs.publish_nightly == 'true'
+        env:
+          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
+        run: |
+          echo "============================================"
+          echo "  Publishing to F-Droid nightly repo..."
+          echo "  Archive limit : ${{ env.ARCHIVE_LIMIT }} builds"
+          echo "============================================"
+
+          sudo add-apt-repository ppa:fdroid/fdroidserver --yes
+          sudo apt-get update -qq
+          sudo apt-get install -y apksigner fdroidserver --no-install-recommends
+
+          fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
+      # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: app-debug-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 90
+      # ─── 10. Echo build result ─────────────────────────────────────────────
+      - name: Echo build result
+        run: |
+          echo "============================================"
+          if [ "${{ github.event_name }}" == "push" ] || [ "${{ inputs.publish_nightly }}" == "true" ]; then
+            echo "  Build complete. Nightly published to F-Droid."
+          else
+            echo "  Build complete. Nightly was NOT published"
+            echo "  (dispatch with publish_nightly=false)."
+          fi
+          echo "  Artifact : app-debug-${{ github.run_number }}"
+          echo "  Run #    : ${{ github.run_number }}"
+          echo "============================================"
