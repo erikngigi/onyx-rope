@@ -90,6 +90,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           port: ${{ secrets.VPS_PORT || '22' }}
           key: ${{ secrets.FDROID_DEPLOY_KEY }}
+          debug: true
           source: "build/app/outputs/flutter-apk/app-debug.apk"
           target: ${{ env.VPS_DEPLOY_PATH }}
           strip_components: 4
