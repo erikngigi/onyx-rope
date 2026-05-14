@@ -39,7 +39,7 @@ on:
 env:
   JAVA_VERSION: '17'
   JAVA_DISTRIBUTION: 'temurin'
-  FLUTTER_VERSION: '3.41.9'
+  FLUTTER_VERSION: '3.32.0'
   FLUTTER_CHANNEL: ${{ inputs.flutter_channel || 'stable' }}
   ARCHIVE_LIMIT: ${{ inputs.archive_limit || '10' }}
 jobs:
@@ -104,34 +104,29 @@ jobs:
 
           flutter build apk --debug
       # ─── 8. Publish to F-Droid nightly repo ────────────────────────────────
+      # fdroid nightly reads DEBUG_KEYSTORE directly from the environment —
+      # it handles base64 decoding, config generation, cloning the -nightly
+      # repo, signing the APK and index, committing and pushing internally.
+      # Do not pre-decode the keystore or create config.yml manually.
       - name: Publish to F-Droid nightly repo
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
         env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE }}
+          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
         run: |
-          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+          if [ -z "$DEBUG_KEYSTORE" ]; then
             echo "ERROR: DEBUG_KEYSTORE secret is missing!"
             exit 1
           fi
 
-          # 1. Decode the keystore file
-          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > debug.keystore
+          echo "============================================"
+          echo "  Publishing to F-Droid nightly repo..."
+          echo "  Archive limit : ${{ env.ARCHIVE_LIMIT }} builds"
+          echo "============================================"
 
-          # 2. Install F-Droid tools
           sudo add-apt-repository ppa:fdroid/fdroidserver --yes
           sudo apt-get update -qq
           sudo apt-get install -y apksigner fdroidserver --no-install-recommends
 
-          # 3. Create a minimal config.yml so fdroid knows which keystore to use
-          # F-Droid nightly requires these specific entries to sign the repo
-          cat > config.yml <<EOF
-          keystore: "debug.keystore"
-          repo_keyalias: "androiddebugkey"
-          keypass: "android"
-          storepass: "android"
-          EOF
-
-          # 4. Run the nightly command
           fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
       # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
       - name: Upload APK artifact
