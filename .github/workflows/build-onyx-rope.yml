@@ -114,14 +114,24 @@ jobs:
             exit 1
           fi
 
-          # Decode the keystore
+          # 1. Decode the keystore file
           echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > debug.keystore
 
+          # 2. Install F-Droid tools
           sudo add-apt-repository ppa:fdroid/fdroidserver --yes
           sudo apt-get update -qq
           sudo apt-get install -y apksigner fdroidserver --no-install-recommends
 
-          # Point fdroid to the decoded keystore if necessary
+          # 3. Create a minimal config.yml so fdroid knows which keystore to use
+          # F-Droid nightly requires these specific entries to sign the repo
+          cat > config.yml <<EOF
+          keystore: "debug.keystore"
+          repo_keyalias: "androiddebugkey"
+          keypass: "android"
+          storepass: "android"
+          EOF
+
+          # 4. Run the nightly command
           fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
       # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
       - name: Upload APK artifact
