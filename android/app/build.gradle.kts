@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.apex_rope"
+    namespace = "com.example.onyx_rope"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "28.2.13676358"
@@ -21,7 +21,7 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID
         // (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.apex_rope"
+        applicationId = "com.example.onyx_rope"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 26

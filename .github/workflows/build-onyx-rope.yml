@@ -101,7 +101,7 @@ jobs:
           echo "============================================"
 
           sed -i "s/versionCode[[:space:]]*=\?[[:space:]]*[0-9]*/versionCode $VERSION_CODE/" \
-            android/app/build.gradle
+            android/app/build.gradle.kts
 
           flutter build apk --debug
       # ─── 8. Publish to F-Droid nightly repo ────────────────────────────────
