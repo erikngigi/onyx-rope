@@ -103,11 +103,12 @@ jobs:
           sed -i "s/versionCode = .*/versionCode = $VERSION_CODE/" android/app/build.gradle.kts
 
           flutter build apk --debug
-      # ─── 8. Publish to F-Droid nightly repo ────────────────────────────────
-      # fdroid nightly reads DEBUG_KEYSTORE directly from the environment —
-      # it handles base64 decoding, config generation, cloning the -nightly
-      # repo, signing the APK and index, committing and pushing internally.
-      # Do not pre-decode the keystore or create config.yml manually.
+      # ─── 8a. Load SSH deploy key ───────────────────────────────────────────
+      - name: Load SSH deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.NIGHTLY_DEPLOY_KEY }}
+      # ─── 8b. Publish to F-Droid nightly repo ──────────────────────────────
       - name: Publish to F-Droid nightly repo
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
         env:
@@ -126,6 +127,24 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y apksigner --no-install-recommends
           pip install fdroidserver
+
+          # Decode keystore from base64 secret to a real file
+          echo "$DEBUG_KEYSTORE" | base64 --decode > fdroid/debug.keystore
+
+          # Write the config.yml fdroid actually reads
+          cat > fdroid/config.yml << EOF
+          repo_url: https://github.com/erikngigi/onyx-rope-nightly/raw/master/fdroid/repo
+          repo_name: "Onyx Rope Nightly"
+          repo_description: "Nightly builds of Onyx Rope"
+          keystore: debug.keystore
+          keystorepass: android
+          keypass: android
+          keydefs:
+            signer:
+              keyalias: androiddebugkey
+          servergitmirrors:
+            - url: git@github.com:erikngigi/onyx-rope-nightly
+          EOF
 
           fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
       # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
