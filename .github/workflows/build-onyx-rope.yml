@@ -1,4 +1,4 @@
-name: Flutter Build & F-Droid Nightly
+name: Flutter Build & Deploy Onyx Rope Application
 on:
   push:
     branches: [main]
@@ -20,31 +20,24 @@ on:
           - 'beta'
           - 'master'
       publish_nightly:
-        description: 'Publish build to F-Droid nightly repo'
+        description: 'Publish build to VPS'
         required: true
         default: 'true'
         type: choice
         options:
           - 'true'
           - 'false'
-      archive_limit:
-        description: 'Number of nightly builds to keep in the F-Droid repo'
-        required: true
-        default: '10'
-        type: string
 # ─── Environment variables ─────────────────────────────────────────────────────
-# These are available to every step in every job in this workflow.
-# workflow_dispatch inputs fall back to the defaults below when the workflow
-# is triggered by a push (where no inputs are supplied).
+# Now sourcing from GitHub Repository Variables (Settings > Secrets and variables)
 env:
-  JAVA_VERSION: '17'
-  JAVA_DISTRIBUTION: 'temurin'
-  FLUTTER_VERSION: '3.41.9'
-  FLUTTER_CHANNEL: ${{ inputs.flutter_channel || 'stable' }}
-  ARCHIVE_LIMIT: ${{ inputs.archive_limit || '10' }}
+  JAVA_VERSION: ${{ vars.JAVA_VERSION || '17' }}
+  JAVA_DISTRIBUTION: ${{ vars.JAVA_DISTRIBUTION || 'temurin' }}
+  FLUTTER_VERSION: ${{ vars.FLUTTER_VERSION || '3.41.9' }}
+  FLUTTER_CHANNEL: ${{ inputs.flutter_channel || vars.FLUTTER_CHANNEL || 'stable' }}
+  VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/var/www/downloads' }}
 jobs:
-  build-and-publish:
-    name: Build APK & Publish Nightly
+  build-and-deploy:
+    name: Build APK & Deploy
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,18 +49,12 @@ jobs:
       - name: Echo trigger information
         run: |
           echo "============================================"
-          echo "  Flutter Build & F-Droid Nightly"
+          echo "  Flutter Build & VPS Deploy"
           echo "============================================"
-          echo "Triggered by    : ${{ github.event_name }}"
-          echo "Branch          : ${{ github.ref_name }}"
-          echo "Commit SHA      : ${{ github.sha }}"
-          echo "Actor           : ${{ github.actor }}"
-          echo "Java version    : ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }})"
-          echo "Flutter version : ${{ env.FLUTTER_VERSION }} (${{ env.FLUTTER_CHANNEL }})"
-          echo "Archive limit   : ${{ env.ARCHIVE_LIMIT }} builds"
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "Publish nightly : ${{ inputs.publish_nightly }}"
-          fi
+          echo "Java version    : ${{ env.JAVA_VERSION }}"
+          echo "Flutter version : ${{ env.FLUTTER_VERSION }}"
+          echo "VPS host        : ${{ secrets.VPS_HOST }}"
+          echo "Target Path     : ${{ env.VPS_DEPLOY_PATH }}"
           echo "============================================"
       # ─── 3. Set up Java ────────────────────────────────────────────────────
       - name: Set up JDK ${{ env.JAVA_VERSION }}
@@ -92,99 +79,25 @@ jobs:
       - name: Build debug APK
         run: |
           export VERSION_CODE=$(date '+%s')
-          echo "============================================"
-          echo "  Starting Flutter build..."
-          echo "  versionCode : $VERSION_CODE"
-          echo "  Channel     : ${{ env.FLUTTER_CHANNEL }}"
-          echo "  Flutter     : ${{ env.FLUTTER_VERSION }}"
-          echo "  Java        : ${{ env.JAVA_VERSION }}"
-          echo "============================================"
-
           sed -i "s/versionCode = .*/versionCode = $VERSION_CODE/" android/app/build.gradle.kts
-
           flutter build apk --debug
-      # ─── 8a. Load SSH deploy key ───────────────────────────────────────────
-      # Only runs when publishing is enabled. The private key must be stored
-      # in the NIGHTLY_DEPLOY_KEY secret as raw PEM text (not base64 encoded).
-      # The matching public key must be added as a write-access deploy key on
-      # the onyx-rope-nightly repository.
-      - name: Load SSH deploy key
+      # ─── 8. SCP APK to VPS ─────────────────────────────────────────────────
+      - name: Copy APK to VPS
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: appleboy/scp-action@v0.1.7
         with:
-          ssh-private-key: ${{ secrets.NIGHTLY_DEPLOY_KEY }}
-      - name: Add GitHub to known hosts
-        if: github.event_name == 'push' || inputs.publish_nightly == 'true'
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-      # ─── 8b. Publish to F-Droid nightly repo ──────────────────────────────
-      # Requires two secrets:
-      #   NIGHTLY_DEPLOY_KEY : raw PEM private SSH key (write access to nightly repo)
-      #   DEBUG_KEYSTORE     : debug.keystore file encoded as base64
-      - name: Publish to F-Droid nightly repo
-        if: github.event_name == 'push' || inputs.publish_nightly == 'true'
-        env:
-          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
-        run: |
-          if [ -z "$DEBUG_KEYSTORE" ]; then
-            echo "ERROR: DEBUG_KEYSTORE secret is missing!"
-            exit 1
-          fi
-
-          echo "============================================"
-          echo "  Publishing to F-Droid nightly repo..."
-          echo "  Archive limit : ${{ env.ARCHIVE_LIMIT }} builds"
-          echo "============================================"
-
-          sudo apt-get update -qq
-          sudo apt-get install -y apksigner --no-install-recommends
-          pip install fdroidserver
-
-          # Ensure the fdroid working directory exists
-          mkdir -p fdroid
-
-          # Decode the keystore from base64 secret into a real file
-          echo "$DEBUG_KEYSTORE" | base64 --decode > fdroid/debug.keystore
-
-          # Write config.yml that fdroid actually reads.
-          # IMPORTANT: the heredoc content must be flush-left (no leading
-          # spaces) so the resulting YAML is valid — indentation inside a
-          # run: block would otherwise be prepended to every line.
-          cat > fdroid/config.yml << 'EOF'
-          repo_url: https://github.com/erikngigi/onyx-rope-nightly/raw/master/fdroid/repo
-          repo_name: "Onyx Rope Nightly"
-          repo_description: "Nightly builds of Onyx Rope"
-          keystore: debug.keystore
-          keystorepass: android
-          keypass: android
-          keydefs:
-            signer:
-              keyalias: androiddebugkey
-          servergitmirrors:
-            - url: git@github.com:erikngigi/onyx-rope-nightly
-          EOF
-
-          fdroid nightly --archive-older ${{ env.ARCHIVE_LIMIT }}
-      # ─── 9. Upload APK as GitHub Actions artifact ──────────────────────────
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: app-debug-${{ github.run_number }}
-          path: build/app/outputs/flutter-apk/app-debug.apk
-          retention-days: 90
-      # ─── 10. Echo build result ─────────────────────────────────────────────
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          key: ${{ secrets.FDROID_DEPLOY_KEY }}
+          source: "build/app/outputs/flutter-apk/app-debug.apk"
+          target: ${{ env.VPS_DEPLOY_PATH }}
+          strip_components: 4
+          overwrite: true
+      # ─── 9. Echo build result ──────────────────────────────────────────────
       - name: Echo build result
         run: |
           echo "============================================"
-          if [ "${{ github.event_name }}" == "push" ] || [ "${{ inputs.publish_nightly }}" == "true" ]; then
-            echo "  Build complete. Nightly published to F-Droid."
-          else
-            echo "  Build complete. Nightly was NOT published"
-            echo "  (dispatch with publish_nightly=false)."
-          fi
-          echo "  Artifact : app-debug-${{ github.run_number }}"
-          echo "  Run #    : ${{ github.run_number }}"
+          echo "  Deployment Successful"
+          echo "  Run #${{ github.run_number }}"
           echo "============================================"
