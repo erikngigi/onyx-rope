@@ -80,9 +80,9 @@ jobs:
         run: |
           export VERSION_CODE=$(date '+%s')
           sed -i "s/versionCode = .*/versionCode = $VERSION_CODE/" android/app/build.gradle.kts
-          flutter build apk --debug
+          flutter build apk --release --no-tree-shake-icons
           # Rename the file to match the SCP source
-          mv build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/onyx-rope.apk
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/onyx-rope.apk
       # ─── 8. SCP APK to VPS ─────────────────────────────────────────────────
       - name: Copy APK to VPS
         if: github.event_name == 'push' || inputs.publish_nightly == 'true'
