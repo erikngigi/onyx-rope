@@ -3,10 +3,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'lib/**'
-      - 'android/**'
-      - 'pubspec.yaml'
-      - 'pubspec.lock'
+      - 'app/lib/**'
+      - 'app/android/**'
+      - 'app/pubspec.yaml'
+      - 'app/pubspec.lock'
       - '.github/workflows/build-onyx-rope.yml'
   workflow_dispatch:
     inputs:
@@ -39,6 +39,9 @@ jobs:
   build-and-deploy:
     name: Build APK & Deploy
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: read
     steps:
@@ -93,7 +96,7 @@ jobs:
           port: ${{ secrets.VPS_PORT || '22' }}
           key: ${{ secrets.FDROID_DEPLOY_KEY }}
           debug: true
-          source: "build/app/outputs/flutter-apk/onyx-rope.apk"
+          source: "app/build/app/outputs/flutter-apk/onyx-rope.apk"
           target: ${{ env.VPS_DEPLOY_PATH }}
           strip_components: 4
           overwrite: true

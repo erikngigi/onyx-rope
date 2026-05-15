@@ -77,7 +77,7 @@ repo_description: >-
 # set the filename here.  You must still copy it into place in
 # repo/icons/ and/or archive/icons/.
 #
-# repo_icon: myicon.png
+repo_icon: icon.png
 # archive_icon: myicon.png
 
 # This allows a specific kind of insecure APK to be included in the
@@ -140,11 +140,11 @@ keystore: keystore.p12
 # different than the keypass below, it can be OK to store the password in this
 # file for real use. But in general, sensitive passwords should not be stored
 # in text files!
-keystorepass: ans8OVqrBR/cNJhQfeE5YFX5DSFed3eEuPuVM5CGNrk=
+keystorepass: uTAkzu3l8hXYxL0KA2BfU9SWgnid/Zunwb7AYN7EXgA=
 # The password for keys - the same is used for each auto-generated key as well
 # as for the repository key. You should not normally store this password in a
 # file since it is a sensitive password.
-keypass: ans8OVqrBR/cNJhQfeE5YFX5DSFed3eEuPuVM5CGNrk=
+keypass: uTAkzu3l8hXYxL0KA2BfU9SWgnid/Zunwb7AYN7EXgA=
 # The distinguished name used for all keys.
 keydname: CN=dev.saferiderkenya.com, OU=F-Droid
 # Use this to override the auto-generated key aliases with specific ones
