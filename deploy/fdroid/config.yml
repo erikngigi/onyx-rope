@@ -139,11 +139,11 @@ keystore: keystore.p12
 # different than the keypass below, it can be OK to store the password in this
 # file for real use. But in general, sensitive passwords should not be stored
 # in text files!
-keystorepass: uTAkzu3l8hXYxL0KA2BfU9SWgnid/Zunwb7AYN7EXgA=
+keystorepass: Bv7s61WAsMc4OT9TgMyyb1hfvN8sP2V8DEhLwk+BnlY=
 # The password for keys - the same is used for each auto-generated key as well
 # as for the repository key. You should not normally store this password in a
 # file since it is a sensitive password.
-keypass: uTAkzu3l8hXYxL0KA2BfU9SWgnid/Zunwb7AYN7EXgA=
+keypass: Bv7s61WAsMc4OT9TgMyyb1hfvN8sP2V8DEhLwk+BnlY=
 # The distinguished name used for all keys.
 keydname: CN=dev.saferiderkenya.com, OU=F-Droid
 # Use this to override the auto-generated key aliases with specific ones
