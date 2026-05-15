@@ -34,7 +34,7 @@ env:
   JAVA_DISTRIBUTION: ${{ vars.JAVA_DISTRIBUTION || 'temurin' }}
   FLUTTER_VERSION: ${{ vars.FLUTTER_VERSION || '3.41.9' }}
   FLUTTER_CHANNEL: ${{ inputs.flutter_channel || vars.FLUTTER_CHANNEL || 'stable' }}
-  VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/var/www/downloads' }}
+  VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH }}
 jobs:
   build-and-deploy:
     name: Build APK & Deploy
