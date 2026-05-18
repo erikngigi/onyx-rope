@@ -100,8 +100,8 @@ jobs:
         run: |
           sed -i -e 's/-Wl,/-Wl,--build-id=none,/' \
             ${{ steps.flutter-action.outputs.PUB-CACHE-PATH }}/hosted/pub.dev/jni-*/src/CMakeLists.txt || true
-      # ─── 10. Build split APKs ──────────────────────────────────────────────
-      - name: Build split APKs
+      # ─── 10. Build universal APK ───────────────────────────────────────────
+      - name: Build universal APK
         env:
           CI: "true"
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -109,15 +109,11 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_PATH: release-keystore.jks
         run: |
-          flutter build apk --release --split-per-abi --no-tree-shake-icons \
+          flutter build apk --release --no-tree-shake-icons \
             --split-debug-info=build/symbols
           VERSION=${{ steps.version.outputs.VERSION }}
-          mv build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
-             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}-armeabi-v7a.apk
-          mv build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}-arm64-v8a.apk
-          mv build/app/outputs/flutter-apk/app-x86_64-release.apk \
-             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}-x86_64.apk
+          mv build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}.apk
       # ─── 11. Create GitHub Release ─────────────────────────────────────────
       - name: Create GitHub Release
         if: github.event_name == 'push' || inputs.create_release == 'true'
@@ -129,10 +125,8 @@ jobs:
             ## Onyx Rope ${{ steps.version.outputs.TAG }}
 
             ### Install
-            Download the APK for your device architecture:
-            - **arm64-v8a** — most modern Android phones (recommended)
-            - **armeabi-v7a** — older 32-bit Android devices
-            - **x86_64** — emulators and some Chromebooks
+            Download the APK and add it to your local F-Droid repository,
+            then run `fdroid deploy` to publish.
 
             ### What's new
             See changelogs for details.
@@ -140,9 +134,7 @@ jobs:
           prerelease: false
           make_latest: true
           files: |
-            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
-            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
-            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}-x86_64.apk
+            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}.apk
       # ─── 12. Echo build result ─────────────────────────────────────────────
       - name: Echo build result
         run: |
