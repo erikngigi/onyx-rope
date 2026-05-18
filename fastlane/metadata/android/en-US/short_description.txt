@@ -1,1 +1,0 @@
-Interval timer for skipping rope — set jump time, rest time, and sets.

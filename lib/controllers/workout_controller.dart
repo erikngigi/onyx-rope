@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:volume_controller/volume_controller.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class WorkoutController extends ChangeNotifier {
@@ -20,6 +21,49 @@ class WorkoutController extends ChangeNotifier {
   bool isPaused = false;
   bool isJumping = true;
   bool isPreparing = false;
+
+  // Volume control
+  double currentVolume = 0.5;
+  bool showVolumeOverlay = false;
+  Timer? _volumeOverlayTimer;
+
+  WorkoutController() {
+    _initVolume();
+  }
+
+  Future<void> _initVolume() async {
+    // Disable system volume UI so we can handle it ourselves
+    VolumeController().showSystemUI = false;
+
+    // Sync our state with the current system volume
+    currentVolume = await VolumeController().getVolume();
+    notifyListeners();
+  }
+
+  void increaseVolume() {
+    final newVol = (currentVolume + 0.1).clamp(0.0, 1.0);
+    _setVolume(newVol);
+  }
+
+  void decreaseVolume() {
+    final newVol = (currentVolume - 0.1).clamp(0.0, 1.0);
+    _setVolume(newVol);
+  }
+
+  void _setVolume(double vol) {
+    currentVolume = vol;
+    VolumeController().setVolume(vol);
+
+    // Show overlay briefly, then hide it
+    showVolumeOverlay = true;
+    _volumeOverlayTimer?.cancel();
+    _volumeOverlayTimer = Timer(const Duration(seconds: 2), () {
+      showVolumeOverlay = false;
+      notifyListeners();
+    });
+
+    notifyListeners();
+  }
 
   void updateSets(int? value) {
     sets = (value != null && value < 0) ? 0 : value;
@@ -130,7 +174,10 @@ class WorkoutController extends ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
+    _volumeOverlayTimer?.cancel();
     _audioPlayer.dispose();
+    // Restore system volume UI when app is disposed
+    VolumeController().showSystemUI = true;
     super.dispose();
   }
 }

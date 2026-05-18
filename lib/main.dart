@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'controllers/workout_controller.dart';
 import 'screens/workout_screen.dart';
 
@@ -27,6 +28,9 @@ class WorkoutScreen extends StatefulWidget {
 class _WorkoutScreenState extends State<WorkoutScreen> {
   final WorkoutController _controller = WorkoutController();
 
+  // The Focus node lets this widget receive hardware key events
+  final FocusNode _focusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -35,17 +39,53 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
 
+  /// Handle hardware volume-up / volume-down key presses.
+  /// Returning [KeyEventResult.handled] prevents the system from also
+  /// changing the media/ringer volume via its own UI.
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.audioVolumeUp) {
+        _controller.increaseVolume();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.audioVolumeDown) {
+        _controller.decreaseVolume();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: _controller.isActive ? _buildActiveUI() : _buildSetupUI(),
+    return KeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (event) => _handleKeyEvent(_focusNode, event),
+      child: Scaffold(
+        body: SafeArea(
+          child: Stack(
+            children: [
+              // ── Main content ──────────────────────────────────────────
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _controller.isActive
+                    ? _buildActiveUI()
+                    : _buildSetupUI(),
+              ),
+
+              // ── Volume overlay (top-right, fades in/out) ──────────────
+              VolumeOverlay(
+                volume: _controller.currentVolume,
+                visible: _controller.showVolumeOverlay,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -69,21 +109,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             label: "SETS",
             value: _controller.sets,
             onChanged: _controller.updateSets,
-            step: 1, // Sets still increment by 1
+            step: 1,
           ),
           const SizedBox(height: 20),
           NumberInputBlock(
             label: "ACTIVE",
             value: _controller.jumpTime,
             onChanged: _controller.updateJumpTime,
-            step: 5, // Now moves in steps of 5
+            step: 5,
           ),
           const SizedBox(height: 20),
           NumberInputBlock(
             label: "COOLDOWN",
             value: _controller.restTime,
             onChanged: _controller.updateRestTime,
-            step: 5, // Now moves in steps of 5
+            step: 5,
           ),
           const SizedBox(height: 50),
           ElevatedButton(
