@@ -1,2 +1,6 @@
 # Ignore all files in deploy/fdroid
 deploy/fdroid
+
+# Ignore keystore contents
+app/release-keystore.jks
+app/keystore_b64.txt

@@ -1,4 +1,4 @@
-name: Flutter Build & Deploy Onyx Rope Application
+name: Flutter Build & Release Onyx Rope Application
 on:
   push:
     branches: [main]
@@ -19,8 +19,8 @@ on:
           - 'stable'
           - 'beta'
           - 'master'
-      publish_nightly:
-        description: 'Publish build to VPS'
+      create_release:
+        description: 'Create GitHub release'
         required: true
         default: 'true'
         type: choice
@@ -28,82 +28,126 @@ on:
           - 'true'
           - 'false'
 # ─── Environment variables ─────────────────────────────────────────────────────
-# Now sourcing from GitHub Repository Variables (Settings > Secrets and variables)
 env:
   JAVA_VERSION: ${{ vars.JAVA_VERSION || '17' }}
   JAVA_DISTRIBUTION: ${{ vars.JAVA_DISTRIBUTION || 'temurin' }}
   FLUTTER_VERSION: ${{ vars.FLUTTER_VERSION || '3.41.9' }}
   FLUTTER_CHANNEL: ${{ inputs.flutter_channel || vars.FLUTTER_CHANNEL || 'stable' }}
-  VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH }}
 jobs:
-  build-and-deploy:
-    name: Build APK & Deploy
+  build-and-release:
+    name: Build APK & Release
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: app
     permissions:
-      contents: read
+      contents: write # Required to create tags and releases
     steps:
       # ─── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout source
         uses: actions/checkout@v4.2.2
-      # ─── 2. Echo trigger information ───────────────────────────────────────
+      # ─── 2. Extract version from pubspec.yaml ──────────────────────────────
+      - name: Extract version
+        id: version
+        run: |
+          # Extracts e.g. "1.0.0+1" → VERSION=1.0.0 and VERSION_CODE=1
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+          VERSION=$(echo $RAW | cut -d'+' -f1)
+          VERSION_CODE=$(echo $RAW | cut -d'+' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION (code: $VERSION_CODE)"
+      # ─── 3. Echo trigger information ───────────────────────────────────────
       - name: Echo trigger information
         run: |
           echo "============================================"
-          echo "  Flutter Build & VPS Deploy"
+          echo "  Flutter Build & GitHub Release"
           echo "============================================"
           echo "Java version    : ${{ env.JAVA_VERSION }}"
           echo "Flutter version : ${{ env.FLUTTER_VERSION }}"
-          echo "VPS host        : ${{ secrets.VPS_HOST }}"
-          echo "Target Path     : ${{ env.VPS_DEPLOY_PATH }}"
+          echo "App version     : ${{ steps.version.outputs.VERSION }}"
+          echo "Version code    : ${{ steps.version.outputs.VERSION_CODE }}"
+          echo "Tag             : ${{ steps.version.outputs.TAG }}"
           echo "============================================"
-      # ─── 3. Set up Java ────────────────────────────────────────────────────
+      # ─── 4. Set up Java ────────────────────────────────────────────────────
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4.7.1
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
-      # ─── 4. Set up Flutter ─────────────────────────────────────────────────
+      # ─── 5. Set up Flutter ─────────────────────────────────────────────────
       - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2.18.0
+        id: flutter-action
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
-      # ─── 5. Install dependencies ───────────────────────────────────────────
+      # ─── 6. Install dependencies ───────────────────────────────────────────
       - name: Install dependencies
         run: flutter pub get
-      # ─── 6. Run tests ──────────────────────────────────────────────────────
+      # ─── 7. Run tests ──────────────────────────────────────────────────────
       - name: Run tests
         run: flutter test
-      # ─── 7. Build debug APK ────────────────────────────────────────────────
-      - name: Build debug APK
+      # ─── 8. Decode keystore ────────────────────────────────────────────────
+      - name: Decode Keystore
         run: |
-          export VERSION_CODE=$(date '+%s')
-          sed -i "s/versionCode = .*/versionCode = $VERSION_CODE/" android/app/build.gradle.kts
-          flutter build apk --release --no-tree-shake-icons
-          # Rename the file to match the SCP source
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/onyx-rope.apk
-      # ─── 8. SCP APK to VPS ─────────────────────────────────────────────────
-      - name: Copy APK to VPS
-        if: github.event_name == 'push' || inputs.publish_nightly == 'true'
-        uses: appleboy/scp-action@v1
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode \
+            > android/app/release-keystore.jks
+      # ─── 9. Strip C++ build IDs (F-Droid compatibility) ───────────────────
+      - name: Remove build IDs from JNI modules
+        run: |
+          sed -i -e 's/-Wl,/-Wl,--build-id=none,/' \
+            ${{ steps.flutter-action.outputs.PUB-CACHE-PATH }}/hosted/pub.dev/jni-*/src/CMakeLists.txt || true
+      # ─── 10. Build split APKs ──────────────────────────────────────────────
+      - name: Build split APKs
+        env:
+          CI: "true"
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_PATH: release-keystore.jks
+        run: |
+          flutter build apk --release --split-per-abi --no-tree-shake-icons \
+            --split-debug-info=build/symbols
+          VERSION=${{ steps.version.outputs.VERSION }}
+          mv build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}-armeabi-v7a.apk
+          mv build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}-arm64-v8a.apk
+          mv build/app/outputs/flutter-apk/app-x86_64-release.apk \
+             build/app/outputs/flutter-apk/onyx-rope-v${VERSION}-x86_64.apk
+      # ─── 11. Create GitHub Release ─────────────────────────────────────────
+      - name: Create GitHub Release
+        if: github.event_name == 'push' || inputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          port: ${{ secrets.VPS_PORT || '22' }}
-          key: ${{ secrets.FDROID_DEPLOY_KEY }}
-          debug: true
-          source: "app/build/app/outputs/flutter-apk/onyx-rope.apk"
-          target: ${{ env.VPS_DEPLOY_PATH }}
-          strip_components: 4
-          overwrite: true
-      # ─── 9. Echo build result ──────────────────────────────────────────────
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: "Onyx Rope ${{ steps.version.outputs.TAG }}"
+          body: |
+            ## Onyx Rope ${{ steps.version.outputs.TAG }}
+
+            ### Install
+            Download the APK for your device architecture:
+            - **arm64-v8a** — most modern Android phones (recommended)
+            - **armeabi-v7a** — older 32-bit Android devices
+            - **x86_64** — emulators and some Chromebooks
+
+            ### What's new
+            See changelogs for details.
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: |
+            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
+            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
+            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}-x86_64.apk
+      # ─── 12. Echo build result ─────────────────────────────────────────────
       - name: Echo build result
         run: |
           echo "============================================"
-          echo "  Deployment Successful"
+          echo "  Release Successful"
+          echo "  Version : ${{ steps.version.outputs.TAG }}"
           echo "  Run #${{ github.run_number }}"
           echo "============================================"
