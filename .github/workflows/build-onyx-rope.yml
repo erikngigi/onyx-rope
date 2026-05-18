@@ -3,10 +3,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'app/lib/**'
-      - 'app/android/**'
-      - 'app/pubspec.yaml'
-      - 'app/pubspec.lock'
+      - 'lib/**'
+      - 'android/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
       - '.github/workflows/build-onyx-rope.yml'
   workflow_dispatch:
     inputs:
@@ -37,9 +37,6 @@ jobs:
   build-and-release:
     name: Build APK & Release
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app
     permissions:
       contents: write # Required to create tags and releases
     steps:
@@ -135,7 +132,7 @@ jobs:
           prerelease: false
           make_latest: true
           files: |
-            app/build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}.apk
+            build/app/outputs/flutter-apk/onyx-rope-v${{ steps.version.outputs.VERSION }}.apk
       # ─── 12. Echo build result ─────────────────────────────────────────────
       - name: Echo build result
         run: |
