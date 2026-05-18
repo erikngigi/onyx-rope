@@ -4,9 +4,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// F-Droid ABI split version code generation
-val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
-
 android {
     namespace = "com.example.onyx_rope"
     compileSdk = 36
@@ -28,7 +25,7 @@ android {
         versionName = flutter.versionName
     }
 
-    // 1. Dynamic signing — uses env vars on CI, falls back to debug locally
+    // Dynamic signing — uses env vars on CI, falls back to debug locally
     signingConfigs {
         if (System.getenv("CI") == "true") {
             create("release") {
@@ -48,31 +45,19 @@ android {
                 } else {
                     signingConfigs.getByName("debug")
                 }
-            // Reduce APK size
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Minification is disabled because Flutter compiles Dart to native
+            // AOT via the engine — R8 has no Dart bytecode to shrink, and it
+            // strips the Java/Kotlin entry-point classes that Android needs to
+            // launch the app, causing a ClassNotFoundException on startup.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 
-    // 2. Strip Google's proprietary dependency metadata (required by F-Droid)
+    // Strip Google's proprietary dependency metadata (required by F-Droid)
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
-    }
-}
-
-// 3. ABI-specific version codes for split APKs (F-Droid requirement)
-// armeabi-v7a → versionCode * 10 + 1
-// arm64-v8a   → versionCode * 10 + 2
-// x86_64      → versionCode * 10 + 3
-android.applicationVariants.configureEach {
-    val variant = this
-    variant.outputs.forEach { output ->
-        val abiVersionCode = abiCodes[output.filters.find { it.filterType == "ABI" }?.identifier]
-        if (abiVersionCode != null) {
-            (output as com.android.build.gradle.internal.api.ApkVariantOutputImpl)
-                .versionCodeOverride = variant.versionCode * 10 + abiVersionCode
-        }
     }
 }
 
