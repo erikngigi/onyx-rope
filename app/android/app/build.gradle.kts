@@ -1,9 +1,11 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// F-Droid ABI split version code generation
+val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
 
 android {
     namespace = "com.example.onyx_rope"
@@ -16,27 +18,60 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID
-        // (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.onyx_rope"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // 1. Dynamic signing — uses env vars on CI, falls back to debug locally
+    signingConfigs {
+        if (System.getenv("CI") == "true") {
+            create("release") {
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                storeFile = System.getenv("KEYSTORE_PATH")?.let { file(it) }
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (System.getenv("CI") == "true") {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
+            // Reduce APK size
+            isMinifyEnabled = true
+            isShrinkResources = true
+        }
+    }
+
+    // 2. Strip Google's proprietary dependency metadata (required by F-Droid)
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+}
+
+// 3. ABI-specific version codes for split APKs (F-Droid requirement)
+// armeabi-v7a → versionCode * 10 + 1
+// arm64-v8a   → versionCode * 10 + 2
+// x86_64      → versionCode * 10 + 3
+android.applicationVariants.configureEach {
+    val variant = this
+    variant.outputs.forEach { output ->
+        val abiVersionCode = abiCodes[output.filters.find { it.filterType == "ABI" }?.identifier]
+        if (abiVersionCode != null) {
+            (output as com.android.build.gradle.internal.api.ApkVariantOutputImpl)
+                .versionCodeOverride = variant.versionCode * 10 + abiVersionCode
         }
     }
 }
